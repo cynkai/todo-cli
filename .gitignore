@@ -1,6 +1,15 @@
-__pycache__/
-*.py[cod]
-.pytest_cache/
-.ruff_cache/
-.venv/
-tasks.json
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Local credentials and private-key files
+secrets/
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+
+# Temporary todo data file
+.tasks.json.tmp
