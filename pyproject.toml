@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "A small JSON-backed command-line todo manager"
 requires-python = ">=3.12"
 dependencies = [
+    "filelock>=3.18",
     "pydantic>=2.11",
     "typer>=0.16",
 ]
