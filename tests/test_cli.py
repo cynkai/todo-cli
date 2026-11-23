@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Final, TypedDict
 
+import pytest
 from pydantic import TypeAdapter
 
 
@@ -170,6 +171,46 @@ def test_unknown_task_exits_without_creating_data(tmp_path: Path) -> None:
     assert result.returncode == 1
     assert "Task not found: missing-id" in result.stderr
     assert not data_file.exists()
+
+
+@pytest.mark.parametrize("content", [b"{", b'{"tasks": 1}', b"\xff"])
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ("list",),
+        ("add", "New task"),
+        ("edit", "existing-id", "Renamed task"),
+        ("complete", "existing-id"),
+        ("delete", "existing-id"),
+    ],
+)
+def test_invalid_data_file_is_reported_and_preserved(
+    tmp_path: Path, arguments: tuple[str, ...], content: bytes
+) -> None:
+    project_root = Path(__file__).parents[1]
+    data_file = tmp_path / "tasks.json"
+    _ = data_file.write_bytes(content)
+
+    result = run_cli(project_root, *arguments, "--data-file", str(data_file))
+
+    assert result.returncode == 1
+    assert result.stdout == ""
+    assert result.stderr == f"Invalid todo data file: {data_file}\n"
+    assert data_file.read_bytes() == content
+
+
+@pytest.mark.parametrize("arguments", [("list",), ("add", "New task")])
+def test_directory_cannot_be_used_as_a_data_file(
+    tmp_path: Path, arguments: tuple[str, ...]
+) -> None:
+    project_root = Path(__file__).parents[1]
+
+    result = run_cli(project_root, *arguments, "--data-file", str(tmp_path))
+
+    assert result.returncode == 1
+    assert result.stdout == ""
+    assert result.stderr.startswith(f"Cannot access todo data file {tmp_path}:")
+    assert "Traceback" not in result.stderr
 
 
 def test_concurrent_adds_preserve_every_task(tmp_path: Path) -> None:

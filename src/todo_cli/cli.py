@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Annotated, Final, assert_never
+from typing import TYPE_CHECKING, Annotated, Final, assert_never
 from uuid import uuid4
 
 import typer
@@ -18,7 +19,10 @@ from todo_cli.models import (
     delete_task,
     edit_task,
 )
-from todo_cli.storage import load_tasks, update_tasks
+from todo_cli.storage import InvalidDataFileError, load_tasks, update_tasks
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 DEFAULT_DATA_FILE: Final = Path("tasks.json")
 DataFileOption = Annotated[
@@ -36,6 +40,18 @@ def _report_not_found(result: TaskNotFound) -> None:
     raise typer.Exit(code=1)
 
 
+@contextmanager
+def _handle_storage_errors(data_file: Path) -> Generator[None]:
+    try:
+        yield
+    except InvalidDataFileError as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=1) from error
+    except OSError as error:
+        typer.echo(f"Cannot access todo data file {data_file}: {error}", err=True)
+        raise typer.Exit(code=1) from error
+
+
 @app.command()
 def add(
     title: TitleArgument,
@@ -44,7 +60,8 @@ def add(
     """Add a task."""
     task_id = TaskId(str(uuid4()))
     try:
-        _ = update_tasks(data_file, lambda todo: add_task(todo, task_id, title))
+        with _handle_storage_errors(data_file):
+            _ = update_tasks(data_file, lambda todo: add_task(todo, task_id, title))
     except ValidationError as error:
         typer.echo(f"Invalid task title: {error.errors()[0]['msg']}", err=True)
         raise typer.Exit(code=2) from error
@@ -54,7 +71,8 @@ def add(
 @app.command("list")
 def list_tasks(data_file: DataFileOption = DEFAULT_DATA_FILE) -> None:
     """List all tasks."""
-    todo_list = load_tasks(data_file)
+    with _handle_storage_errors(data_file):
+        todo_list = load_tasks(data_file)
     if not todo_list.tasks:
         typer.echo("No tasks.")
         return
@@ -69,7 +87,10 @@ def complete(
     data_file: DataFileOption = DEFAULT_DATA_FILE,
 ) -> None:
     """Mark a task complete."""
-    result = update_tasks(data_file, lambda todo: complete_task(todo, TaskId(task_id)))
+    with _handle_storage_errors(data_file):
+        result = update_tasks(
+            data_file, lambda todo: complete_task(todo, TaskId(task_id))
+        )
     match result:
         case TodoList():
             typer.echo(f"Completed: {task_id}")
@@ -87,10 +108,11 @@ def edit(
 ) -> None:
     """Change a task title."""
     try:
-        result = update_tasks(
-            data_file,
-            lambda todo: edit_task(todo, TaskId(task_id), title),
-        )
+        with _handle_storage_errors(data_file):
+            result = update_tasks(
+                data_file,
+                lambda todo: edit_task(todo, TaskId(task_id), title),
+            )
     except ValidationError as error:
         typer.echo(f"Invalid task title: {error.errors()[0]['msg']}", err=True)
         raise typer.Exit(code=2) from error
@@ -109,7 +131,10 @@ def delete(
     data_file: DataFileOption = DEFAULT_DATA_FILE,
 ) -> None:
     """Delete a task."""
-    result = update_tasks(data_file, lambda todo: delete_task(todo, TaskId(task_id)))
+    with _handle_storage_errors(data_file):
+        result = update_tasks(
+            data_file, lambda todo: delete_task(todo, TaskId(task_id))
+        )
     match result:
         case TodoList():
             typer.echo(f"Deleted: {task_id}")
