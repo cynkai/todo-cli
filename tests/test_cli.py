@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Final, TypedDict
 
@@ -32,6 +33,7 @@ def run_cli(project_root: Path, *arguments: str) -> subprocess.CompletedProcess[
         check=False,
         capture_output=True,
         text=True,
+        timeout=30,
     )
 
 
@@ -168,3 +170,21 @@ def test_unknown_task_exits_without_creating_data(tmp_path: Path) -> None:
     assert result.returncode == 1
     assert "Task not found: missing-id" in result.stderr
     assert not data_file.exists()
+
+
+def test_concurrent_adds_preserve_every_task(tmp_path: Path) -> None:
+    project_root = Path(__file__).parents[1]
+    data_file = tmp_path / "tasks.json"
+    titles = [f"Task {index}" for index in range(16)]
+
+    def add(title: str) -> subprocess.CompletedProcess[str]:
+        return run_cli(project_root, "add", title, "--data-file", str(data_file))
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        results = list(executor.map(add, titles))
+
+    for result in results:
+        assert result.returncode == 0, result.stderr
+    tasks = read_data(data_file)["tasks"]
+    assert sorted(task["title"] for task in tasks) == sorted(titles)
+    assert len({task["id"] for task in tasks}) == len(titles)

@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import TYPE_CHECKING, override
 
+from filelock import FileLock
 from pydantic import ValidationError
 
-from todo_cli.models import TodoList
+from todo_cli.models import TaskNotFound, TodoList
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from collections.abc import Callable
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,12 +40,34 @@ def load_tasks(path: Path) -> TodoList:
         raise InvalidDataFileError(path=path) from error
 
 
-def save_tasks(path: Path, todo_list: TodoList) -> None:
-    """Atomically persist the complete todo list as JSON."""
+def update_tasks[Result: TodoList | TaskNotFound](
+    path: Path,
+    change: Callable[[TodoList], Result],
+) -> Result:
+    """Lock the read, change and save as one transaction across CLI processes."""
+    path = path.resolve()
     _ = path.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path = path.with_name(f".{path.name}.tmp")
-    _ = temporary_path.write_text(
-        f"{todo_list.model_dump_json(indent=2)}\n",
-        encoding="utf-8",
-    )
-    _ = temporary_path.replace(path)
+    with FileLock(path.with_name(f".{path.name}.lock")):
+        result = change(load_tasks(path))
+        if isinstance(result, TodoList):
+            _save_tasks(path, result)
+        return result
+
+
+def _save_tasks(path: Path, todo_list: TodoList) -> None:
+    temporary_path: Path | None = None
+    try:
+        with NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            temporary_path = Path(handle.name)
+            _ = handle.write(f"{todo_list.model_dump_json(indent=2)}\n")
+        _ = temporary_path.replace(path)
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)

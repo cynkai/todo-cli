@@ -10,6 +10,7 @@ JSON 파일 하나에 할 일을 저장하는 작은 커맨드라인 할 일 관
 - `add`, `list`, `complete`, `edit`, `delete` 다섯 가지 명령
 - 데이터는 `tasks.json` 한 파일에 저장 (`--data-file`로 경로 변경 가능)
 - 임시 파일에 먼저 쓰고 교체하는 방식으로 저장해, 쓰는 도중 끊겨도 파일이 깨지지 않음
+- 같은 데이터 파일을 여러 프로세스가 수정하면 파일 잠금으로 작업을 순서대로 처리
 - Pydantic으로 저장 파일의 스키마를 검증하고, 빈 제목은 거부
 - ruff(전체 룰), basedpyright(strict), pytest로 품질 관리
 
@@ -38,6 +39,8 @@ uv run todo delete <task-id>
 ```bash
 uv run todo list --data-file ~/notes/tasks.json
 ```
+
+같은 파일의 수정 명령은 데이터 파일 옆의 잠금 파일(예: `.tasks.json.lock`)을 공유합니다. 수정 중에는 잠금 파일을 그대로 두세요. 운영체제가 종료된 프로세스의 잠금을 해제합니다.
 
 ## 개발
 

@@ -18,7 +18,7 @@ from todo_cli.models import (
     delete_task,
     edit_task,
 )
-from todo_cli.storage import load_tasks, save_tasks
+from todo_cli.storage import load_tasks, update_tasks
 
 DEFAULT_DATA_FILE: Final = Path("tasks.json")
 DataFileOption = Annotated[
@@ -42,13 +42,13 @@ def add(
     data_file: DataFileOption = DEFAULT_DATA_FILE,
 ) -> None:
     """Add a task."""
+    task_id = TaskId(str(uuid4()))
     try:
-        updated = add_task(load_tasks(data_file), TaskId(str(uuid4())), title)
+        _ = update_tasks(data_file, lambda todo: add_task(todo, task_id, title))
     except ValidationError as error:
         typer.echo(f"Invalid task title: {error.errors()[0]['msg']}", err=True)
         raise typer.Exit(code=2) from error
-    save_tasks(data_file, updated)
-    typer.echo(f"Added: {updated.tasks[-1].id}")
+    typer.echo(f"Added: {task_id}")
 
 
 @app.command("list")
@@ -69,10 +69,9 @@ def complete(
     data_file: DataFileOption = DEFAULT_DATA_FILE,
 ) -> None:
     """Mark a task complete."""
-    result = complete_task(load_tasks(data_file), TaskId(task_id))
+    result = update_tasks(data_file, lambda todo: complete_task(todo, TaskId(task_id)))
     match result:
         case TodoList():
-            save_tasks(data_file, result)
             typer.echo(f"Completed: {task_id}")
         case TaskNotFound():
             _report_not_found(result)
@@ -88,13 +87,15 @@ def edit(
 ) -> None:
     """Change a task title."""
     try:
-        result = edit_task(load_tasks(data_file), TaskId(task_id), title)
+        result = update_tasks(
+            data_file,
+            lambda todo: edit_task(todo, TaskId(task_id), title),
+        )
     except ValidationError as error:
         typer.echo(f"Invalid task title: {error.errors()[0]['msg']}", err=True)
         raise typer.Exit(code=2) from error
     match result:
         case TodoList():
-            save_tasks(data_file, result)
             typer.echo(f"Updated: {task_id}")
         case TaskNotFound():
             _report_not_found(result)
@@ -108,10 +109,9 @@ def delete(
     data_file: DataFileOption = DEFAULT_DATA_FILE,
 ) -> None:
     """Delete a task."""
-    result = delete_task(load_tasks(data_file), TaskId(task_id))
+    result = update_tasks(data_file, lambda todo: delete_task(todo, TaskId(task_id)))
     match result:
         case TodoList():
-            save_tasks(data_file, result)
             typer.echo(f"Deleted: {task_id}")
         case TaskNotFound():
             _report_not_found(result)

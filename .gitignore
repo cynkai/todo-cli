@@ -11,5 +11,8 @@ secrets/
 id_rsa
 id_ed25519
 
-# Temporary todo data file
+# Local todo data and sidecars
+/tasks.json
 .tasks.json.tmp
+.tasks.json.*.tmp
+.tasks.json.lock
