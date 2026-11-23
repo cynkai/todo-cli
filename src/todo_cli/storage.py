@@ -34,6 +34,8 @@ def load_tasks(path: Path) -> TodoList:
         raw_data = path.read_text(encoding="utf-8")
     except FileNotFoundError:
         return TodoList()
+    except UnicodeDecodeError as error:
+        raise InvalidDataFileError(path=path) from error
     try:
         return TodoList.model_validate_json(raw_data)
     except ValidationError as error:
